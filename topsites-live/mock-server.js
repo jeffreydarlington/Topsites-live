@@ -1,25 +1,34 @@
-// ========================================
-// IMPORT REQUIRED LIBRARIES (Getting our toys from the toy box!)
-// ========================================
-const express = require('express'); // Creates a web server to handle requests
-const http = require('http'); // Provides HTTP server functionality
-const WebsSocket = require('ws'); // Enables real-time two-way communication (walkie-talkie!)
-const cors = require('cors'); // Allows requests from different websites/domains
-const { time, timeStamp } = require('console'); // Console utilities (not actually used in this code)
+// ============================================
+// IMPORT REQUIRED LIBRARIES
+// ============================================
+// Express: Web framework for creating HTTP server and REST APIs
+const express = require('express');
+// HTTP: Node.js built-in module for creating HTTP servers
+const http = require('http');
+// WebSocket: Library for real-time bidirectional communication
+const WebSocket = require('ws');
+// CORS: Middleware to enable Cross-Origin Resource Sharing (allows requests from different domains)
+const cors = require('cors');
 
-// ========================================
-// SETUP THE SERVER (Building our lemonade stand!)
-// ========================================
-const app = express(); // Create our Express application
-app.use(cors()); // Enable CORS so anyone can connect to our server
-const server = http.createServer(app); // Create HTTP server using Express app
-const wss = new WebsSocket.Server({ server }); // Create WebSocket server on top of HTTP server
+// ============================================
+// SERVER SETUP
+// ============================================
+// Create Express application instance
+const app = express();
+// Enable CORS for all routes (allows any domain to access this API)
+app.use(cors());
+// Create HTTP server using Express app
+const server = http.createServer(app);
+// Create WebSocket server attached to the HTTP server
+const wss = new WebSocket.Server({ server });
 
-const PORT = 8080; // The "address" where our server lives
+// Define the port number the server will listen on
+const PORT = 8080;
 
-// ========================================
-// DEFINE WEBSITE LIST (Our clipboard of websites to track)
-// ========================================
+// ============================================
+// CONFIGURATION DATA
+// ============================================
+// Array of popular website domains to simulate traffic for
 const SITES = [
     'google.com',
     'facebook.com',
@@ -43,133 +52,157 @@ const SITES = [
     'flickr.com'
 ];
 
-// ========================================
-// DEFINE REGIONS (Countries where visitors come from)
-// ========================================
+// Array of region codes representing different geographical areas
 const REGIONS = ['US', 'UK', 'CA', 'AU', 'DE', 'FR', 'IN', 'JP'];
 
-// ========================================
-// ASSIGN BASE TRAFFIC TO EACH SITE (Deciding how popular each website is)
-// ========================================
-// Each website gets a random "baseline" popularity between 10,000 and 60,000 visitors
+// Generate base traffic numbers for each site
+// This creates an object where each site has a random baseline visit count between 10,000-60,000
 const siteBaseTraffic = SITES.reduce((acc, site) => {
-    acc[site] = Math.random() * 50000 + 10000; // Random number between 10k and 60k
+    acc[site] = Math.random() * 50000 + 10000; // Base visits per tick
     return acc;
 }, {});
 
-// ========================================
-// GENERATE A SINGLE VISIT RECORD (Our story-making machine!)
-// ========================================
+// ============================================
+// DATA GENERATION FUNCTIONS
+// ============================================
+
+/**
+ * Generates a single visit record with realistic traffic patterns
+ * Traffic varies based on time of day using a sine wave pattern
+ */
 const generateVisitRecord = () => {
-    // Pick a random website from our list
+    // Randomly select a site from the SITES array
     const site = SITES[Math.floor(Math.random() * SITES.length)];
     
-    // Get the baseline popularity for this website
+    // Get the baseline traffic for this site
     const base = siteBaseTraffic[site];
-
-    // CALCULATE TIME-OF-DAY FLUCTUATION (More visitors during the day!)
-    const hour = new Date().getUTCHours(); // Get current hour (0-23)
-    // Use sine wave to simulate daily traffic pattern (peaks in middle of day)
-    const multiplier = Math.sin(hour / 24 * 2 * Math.PI) * 0.5 + 0.7; // Varies between 0.2 and 1.2
     
-    // Calculate final visit count with time-based fluctuation and random variation
-    const visits = Math.floor(base * multiplier * (0.8 + Math.random() * 0.4)); // +/-20% random variation
+    // Calculate traffic multiplier based on current UTC hour (0-23)
+    const hour = new Date().getUTCHours();
+    // Use sine function to create wave pattern: higher during peak hours, lower during off-hours
+    // Multiplier ranges from ~0.2 to ~1.2
+    const multiplier = Math.sin((hour / 24) * Math.PI) * 0.5 + 0.7;
     
-    // Pick a random region/country
-    const region = REGIONS[Math.floor(Math.random() * REGIONS.length)];
-
-    // Return the complete visit record
+    // Return a complete visit record object
     return {
-        timeStamp: new Date().toISOString(), // Current time in ISO format
-        site, // Website name
-        visits, // Number of visits
-        region // Country/region code
+        timestamp: new Date().toISOString(), // Current time in ISO format
+        site, // The website domain
+        // Calculate visits: base traffic ± 20% random variation, multiplied by time-of-day factor
+        visits: Math.floor((base + (Math.random() - 0.5) * base * 0.2) * multiplier),
+        region: REGIONS[Math.floor(Math.random() * REGIONS.length)] // Random region
     };
 };
 
-// ========================================
-// GENERATE HISTORICAL DATA (Making up many stories at once!)
-// ========================================
-// Creates a series of visit records between two dates
-const generateHistoricData = (since, until) => {
-    const records = []; // Array to store all our generated records
-    let currentTime = new Date(since).getTime(); // Start time in milliseconds
-    const endTime = new Date(until).getTime(); // End time in milliseconds
+/**
+ * Generates historical data between two timestamps
+ * Creates multiple visit records at random intervals
+ * @param {Date} since - Start date/time
+ * @param {Date} until - End date/time
+ * @returns {Array} Array of visit records
+ */
+const generateHistoricalData = (since, until) => {
+    const records = []; // Array to store all generated records
+    let currentTime = new Date(since).getTime(); // Convert start date to milliseconds
+    const untilTime = new Date(until).getTime(); // Convert end date to milliseconds
 
     // Keep generating records until we reach the end time
-    while (currentTime <= endTime) {
-        records.push(generateVisitRecord()); // Add a new visit record
-        // Move forward in time by 10-30 seconds (random)
+    while (currentTime < untilTime) {
+        records.push(generateVisitRecord()); // Generate and add a new record
+        // Advance time by a random interval between 10-30 seconds (10000-30000 milliseconds)
         currentTime += Math.random() * 20000 + 10000;
     }
-    
-    return records; // Return all generated records
+    return records;
 };
 
-// ========================================
-// WEBSOCKET SERVER LOGIC (The walkie-talkie station!)
-// ========================================
-// When a client connects via WebSocket
+// ============================================
+// WEBSOCKET SERVER LOGIC
+// ============================================
+
+/**
+ * Handle new WebSocket connections
+ * Sends real-time visit data to connected clients every 2 seconds
+ */
 wss.on('connection', (ws) => {
-    console.log('Client connected to WebSocket'); // Log the connection
+    console.log('Client connected to WebSocket');
 
-    // Send new data every 2 seconds (2000 milliseconds)
+    // Set up interval to send data periodically
     const intervalId = setInterval(() => {
-        // Check if connection is still open
-        if (ws.readyState === WebsSocket.OPEN) {
-            const records = generateVisitRecord(); // Generate a new visit record
-            ws.send(JSON.stringify(records)); // Send it to the client as JSON string
+        // Only send if connection is still open
+        if (ws.readyState === WebSocket.OPEN) {
+            // Generate a new visit record
+            const record = generateVisitRecord();
+            // Send it to the client as JSON string
+            ws.send(JSON.stringify(record));
         }
-    }, 2000);
+    }, 2000); // Send new data every 2 seconds
 
-    // When client disconnects
+    // Handle client disconnection
     ws.on('close', () => {
-        console.log('Client disconnected from WebSocket'); // Log the disconnection
-        clearInterval(intervalId); // Stop sending data
+        console.log('Client disconnected');
+        // Stop sending data when client disconnects
+        clearInterval(intervalId);
+    });
+    
+    // Handle WebSocket errors
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+        // Stop sending data if error occurs
+        clearInterval(intervalId);
     });
 });
 
-// ========================================
-// REST API ENDPOINT (The question counter at our stand!)
-// ========================================
-// Handle GET requests to /api/visits
+// ============================================
+// REST API ENDPOINTS
+// ============================================
+
+/**
+ * GET /api/visits
+ * Returns historical visit data between two timestamps
+ * Query parameters:
+ *   - since: Start date/time (ISO format or any valid date string)
+ *   - until: End date/time (ISO format or any valid date string)
+ */
 app.get('/api/visits', (req, res) => {
-    // Extract 'since' and 'until' parameters from the URL query string
+    // Extract query parameters from URL
     const { since, until } = req.query;
     
-    // Check if both required parameters are provided
+    // Validate that both parameters are provided
     if (!since || !until) {
-        return res.status(400).json({ error: 'Missing since or until query parameters' });
+        return res.status(400).send('Missing "since" or "until" query parameters.');
     }
     
     try {
-        // Try to parse the date strings into Date objects
+        // Convert string parameters to Date objects
         const sinceDate = new Date(since);
         const untilDate = new Date(until);
         
-        // Check if dates are valid (not NaN = Not a Number)
-        if (isNaN(sinceDate.getTime()) || isNaN(untilDate.getTime())) {
-            return res.status(400).json({ error: 'Invalid date format for "since" or "Until".' });
+        // Check if dates are valid (isNaN returns true for invalid dates)
+        if (isNaN(sinceDate) || isNaN(untilDate)) {
+             return res.status(400).send('Invalid date format for "since" or "until".');
         }
         
         // Generate historical data for the requested time range
-        const data = generateHistoricData(sinceDate, untilDate);
+        const data = generateHistoricalData(sinceDate, untilDate);
         
-        // Send the data back as JSON
+        // Send the data as JSON response
         res.json(data);
-    } catch (error) {
-        // If anything goes wrong, send an error response
-        res.status(500).json({ error: 'Internal server error' });
+    } catch (e) {
+        // Handle any unexpected errors
+        res.status(500).send('Error generating historical data.');
     }
 });
 
-// ========================================
-// START THE SERVER (Opening our stand for business!)
-// ========================================
+// ============================================
+// START THE SERVER
+// ============================================
+
+/**
+ * Start listening for connections on the specified port
+ * Once started, log useful information about available endpoints
+ */
 server.listen(PORT, () => {
-    // Log helpful information when server starts
     console.log(`Mock server running on http://localhost:${PORT}`);
-    console.log(`WebSocket server running on ws://localhost:${PORT}/vists`);
-    console.log(`REST API running on http://localhost:${PORT}/api/visits`);
+    console.log(`WebSocket server is at ws://localhost:${PORT}/visits`);
+    console.log(`REST API is at http://localhost:${PORT}/api/visits`);
     console.log('Press Ctrl+C to stop the server.');
 });
