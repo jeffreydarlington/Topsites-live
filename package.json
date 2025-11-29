@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "recharts": "^3.5.0"
+  },
+  "devDependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  }
+}
